@@ -3,24 +3,32 @@ import random
 import string
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from django.dispatch import receiver
 
 class Author(AbstractUser):
     phone = models.CharField(max_length=15)
 
     def __str__(self):
-        return f"{self.username} ({self.phone})"
+        return f"{self.username} ({self.id})"
 
 
 class Trade(models.Model):
+    class TradeStatus(models.TextChoices):
+        OPEN = "open", "Открыто"
+        CLOSED = "closed", "Закрыто"
+
     create_date = models.DateTimeField()
     update_date = models.DateTimeField()
     author = models.ForeignKey(Author, on_delete=models.CASCADE)
     title = models.CharField(max_length=200)
     text = models.CharField(max_length=2000)
-    status = models.IntegerChoices("TradeStatus", "OPEN CLOSED")
+    status = models.CharField(choices=TradeStatus.choices, max_length=20, default=TradeStatus.OPEN)
+
+    def get_images(self):
+        return TradeImage.objects.filter(author=self.author.id)
 
     def __str__(self):
-        return f"{self.title} | {self.author}"
+        return f"{self.title} ({self.id}) | {self.author}"
 
 def author_directory_path(instance, filename):
     # MEDIA_ROOT/<username>/<filename>_<10 rand chars>.<extention>
@@ -39,3 +47,9 @@ class TradeImage(models.Model):
 
     def __str__(self):
         return f"{self.image.name} | {self.trade}"
+
+@receiver(models.signals.post_delete, sender=TradeImage)
+def trade_image_file_delete(sender, instance, **kwargs):
+    if instance.image:
+        if os.path.isfile(instance.image.path):
+            os.remove(instance.image.path)
